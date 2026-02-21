@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Protocol
 
+from app.utils import normalize_keyword_triggers
+
 logger = logging.getLogger(__name__)
 
 
@@ -103,7 +105,7 @@ class WatcherService:
                 id=str(row[0]),
                 source_channel_id=row[1],
                 source_channel_url=row[2],
-                keyword_triggers=_normalize_keyword_triggers(row[3]),
+                keyword_triggers=normalize_keyword_triggers(row[3]),
                 view_velocity_threshold=int(row[4]),
                 min_video_length_seconds=int(row[5]),
             )
@@ -243,20 +245,6 @@ def _extract_channel_id(channel_url: str | None) -> str | None:
     if match:
         return match.group(1)
     return None
-
-
-def _normalize_keyword_triggers(raw_value: Any) -> tuple[str, ...]:
-    if isinstance(raw_value, list):
-        values = raw_value
-    elif isinstance(raw_value, tuple):
-        values = list(raw_value)
-    elif raw_value is None:
-        values = []
-    else:
-        values = [raw_value]
-
-    normalized = [str(value).strip().lower() for value in values if str(value).strip()]
-    return tuple(normalized)
 
 
 def _has_keyword_match(title: str, description: str, keywords: tuple[str, ...]) -> bool:
