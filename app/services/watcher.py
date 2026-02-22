@@ -247,7 +247,6 @@ def _extract_channel_id(channel_url: str | None) -> str | None:
     return None
 
 
-
 def _has_keyword_match(title: str, description: str, keywords: tuple[str, ...]) -> bool:
     if not keywords:
         return True
