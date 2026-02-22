@@ -107,7 +107,7 @@ class JobsApiTests(unittest.TestCase):
             response = self.client.post("/api/jobs/sync", json={"channel_id": "channel-1"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["created_jobs"], 2)
+        self.assertEqual(response.json()["queued"], True)
         run_once.assert_called_once_with(channel_id="channel-1")
 
 
