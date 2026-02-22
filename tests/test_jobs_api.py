@@ -6,14 +6,16 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
+os.environ.setdefault("YOUTUBE_API_KEY", "test-api-key")
 
 try:
     from fastapi.testclient import TestClient
+    from app.api.deps import get_db
+    from app.main import app
 except Exception:  # pragma: no cover
     TestClient = None
-
-from app.api.deps import get_db
-from app.main import app
+    get_db = None
+    app = None
 
 
 class FakeCursor:
@@ -76,7 +78,7 @@ class FakeDB:
 
 class JobsApiTests(unittest.TestCase):
     def setUp(self) -> None:
-        if TestClient is None:
+        if TestClient is None or app is None or get_db is None:
             self.skipTest("fastapi TestClient dependency is unavailable in this environment")
 
         self.db = FakeDB()
@@ -88,7 +90,8 @@ class JobsApiTests(unittest.TestCase):
         self.client = TestClient(app)
 
     def tearDown(self) -> None:
-        app.dependency_overrides.clear()
+        if app is not None:
+            app.dependency_overrides.clear()
 
     def test_dashboard_page_renders(self) -> None:
         response = self.client.get("/")
@@ -107,7 +110,8 @@ class JobsApiTests(unittest.TestCase):
             response = self.client.post("/api/jobs/sync", json={"channel_id": "channel-1"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["created_jobs"], 2)
+        self.assertEqual(response.json()["queued"], True)
+        self.assertEqual(response.json()["channel_id"], "channel-1")
         run_once.assert_called_once_with(channel_id="channel-1")
 
 

@@ -15,3 +15,6 @@ def normalize_keyword_triggers(raw_value: Any) -> tuple[str, ...]:
 
     normalized = [str(value).strip().lower() for value in values if str(value).strip()]
     return tuple(normalized)
+
+
+__all__ = ["normalize_keyword_triggers"]

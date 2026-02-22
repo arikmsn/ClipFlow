@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import traceback
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -76,18 +77,27 @@ class WatcherService:
 
     def run_once(self, channel_id: str | None = None) -> int:
         created_jobs = 0
-        with self._connection_factory() as connection:
-            channels = self._load_active_channels(connection)
-            if channel_id is not None:
-                channels = [channel for channel in channels if channel.id == channel_id]
-            for channel in channels:
-                videos = self._videos_for_channel(channel)
-                for video in videos:
-                    if not self._passes_filters(video, channel):
-                        continue
-                    if self._create_pending_job(connection, channel.id, video.url):
-                        created_jobs += 1
-            connection.commit()
+        try:
+            with self._connection_factory() as connection:
+                channels = self._load_active_channels(connection)
+                if channel_id is not None:
+                    channels = [channel for channel in channels if channel.id == channel_id]
+                    if not channels:
+                        logger.warning("Watcher channel_id %s not found or inactive", channel_id)
+                        return 0
+
+                for channel in channels:
+                    videos = self._videos_for_channel(channel)
+                    for video in videos:
+                        if not self._passes_filters(video, channel):
+                            continue
+                        if self._create_pending_job(connection, channel.id, video.url):
+                            created_jobs += 1
+                connection.commit()
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
+            raise
+
         return created_jobs
 
     def _load_active_channels(self, connection: ConnectionProtocol) -> list[ChannelRecord]:
@@ -247,7 +257,6 @@ def _extract_channel_id(channel_url: str | None) -> str | None:
     if match:
         return match.group(1)
     return None
-
 
 
 def _has_keyword_match(title: str, description: str, keywords: tuple[str, ...]) -> bool:
