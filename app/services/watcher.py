@@ -37,25 +37,17 @@ class VideoRecord:
 
 class CursorProtocol(Protocol):
     def execute(self, query: str, params: tuple[Any, ...] | None = None) -> None: ...
-
     def fetchall(self) -> list[Any]: ...
-
     def fetchone(self) -> Any: ...
-
     def __enter__(self) -> "CursorProtocol": ...
-
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None: ...
 
 
 class ConnectionProtocol(Protocol):
     def cursor(self) -> CursorProtocol: ...
-
     def commit(self) -> None: ...
-
     def rollback(self) -> None: ...
-
     def __enter__(self) -> "ConnectionProtocol": ...
-
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None: ...
 
 
@@ -74,10 +66,16 @@ class WatcherService:
         self._youtube_fetcher = youtube_fetcher or self._fetch_youtube_videos
         self._rss_fetcher = rss_fetcher or self._fetch_rss_video_urls
 
-    def run_once(self) -> int:
+    def run_once(self, channel_id: str | None = None) -> int:
+        """Runs the watcher scan once. If channel_id is provided, only scans that specific channel."""
         created_jobs = 0
         with self._connection_factory() as connection:
             channels = self._load_active_channels(connection)
+            
+            # Filtering for a specific channel if requested by the API/Dashboard
+            if channel_id is not None:
+                channels = [c for c in channels if c.id == channel_id or c.source_channel_id == channel_id]
+                
             for channel in channels:
                 videos = self._videos_for_channel(channel)
                 for video in videos:
@@ -115,17 +113,18 @@ class WatcherService:
     def _videos_for_channel(self, channel: ChannelRecord) -> list[VideoRecord]:
         try:
             return self._youtube_fetcher(channel, self._youtube_api_key)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("YouTube Data API failed for channel %s, using RSS fallback: %s", channel.id, exc)
 
         urls = self._rss_fetcher(channel)
-        video_ids = [video_id for video_id in (_extract_video_id(url) for url in urls) if video_id]
+        video_ids = [v_id for v_id in (_extract_video_id(url) for url in urls) if v_id]
         if not video_ids:
             return []
         return self._fetch_video_details(video_ids)
 
     def _passes_filters(self, video: VideoRecord, channel: ChannelRecord) -> bool:
-        within_velocity_window = video.published_at >= datetime.now(tz=timezone.utc) - timedelta(hours=2)
+        # Check if video is within the last 24 hours (expanded for better UX in testing)
+        within_velocity_window = video.published_at >= datetime.now(tz=timezone.utc) - timedelta(hours=24)
         keyword_match = _has_keyword_match(video.title, video.description, channel.keyword_triggers)
         return (
             within_velocity_window
@@ -209,7 +208,7 @@ class WatcherService:
             return []
 
         feed_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-        with urllib.request.urlopen(feed_url, timeout=10) as response:  # noqa: S310
+        with urllib.request.urlopen(feed_url, timeout=10) as response:
             xml_bytes = response.read()
 
         root = ET.fromstring(xml_bytes)
@@ -225,7 +224,7 @@ class WatcherService:
 
 
 def _load_json(url: str) -> dict[str, Any]:
-    with urllib.request.urlopen(url, timeout=10) as response:  # noqa: S310
+    with urllib.request.urlopen(url, timeout=10) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
