@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -185,6 +186,7 @@ class DownloaderService:
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError("boto3 is required for S3 uploads") from exc
 
-        s3_client = boto3.client("s3")
+        endpoint_url = os.getenv("S3_ENDPOINT_URL")
+        s3_client = boto3.client("s3", endpoint_url=endpoint_url or None)
         s3_client.upload_file(str(local_path), bucket, key)
         return f"s3://{bucket}/{key}"
