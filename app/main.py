@@ -18,7 +18,7 @@ except AssertionError:  # pragma: no cover
 def dashboard(request: Request) -> HTMLResponse:
     if templates is None:
         return HTMLResponse("<html><body><h1>ClipFlow Dashboard</h1></body></html>")
-    return templates.TemplateResponse("index.html", {"request": request, "app_name": settings.app_name})
+    return templates.TemplateResponse(request, "index.html", {"app_name": settings.app_name})
 
 
 @app.get("/health")
