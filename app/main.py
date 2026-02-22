@@ -10,7 +10,7 @@ app.include_router(jobs_router)
 
 try:
     templates = Jinja2Templates(directory="app/templates")
-except AssertionError:  # pragma: no cover
+except Exception:  # pragma: no cover
     templates = None
 
 
