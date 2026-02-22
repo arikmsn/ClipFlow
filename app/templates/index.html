@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ app_name }} Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-slate-950 text-slate-100">
+    <div class="mx-auto max-w-7xl px-6 py-8">
+      <header class="mb-8 rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-2xl">
+        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 class="text-2xl font-semibold tracking-tight">ClipFlow Dashboard</h1>
+            <p class="mt-1 text-sm text-slate-400">Realtime pipeline visibility and channel sync.</p>
+          </div>
+          <div class="flex w-full max-w-xl items-center gap-3">
+            <input
+              id="channelId"
+              type="text"
+              placeholder="Enter Channel ID"
+              class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm outline-none ring-indigo-500 transition focus:ring"
+            />
+            <button
+              id="syncButton"
+              class="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:opacity-60"
+            >
+              <svg id="syncSpinner" class="hidden h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+              </svg>
+              Sync Channel
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <section class="mb-6 grid gap-4 md:grid-cols-3">
+        <div class="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+          <p class="text-sm text-slate-400">Pending</p>
+          <p id="pendingCount" class="mt-2 text-3xl font-semibold text-sky-400">0</p>
+        </div>
+        <div class="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+          <p class="text-sm text-slate-400">Rendering</p>
+          <p id="renderingCount" class="mt-2 text-3xl font-semibold text-amber-300">0</p>
+        </div>
+        <div class="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+          <p class="text-sm text-slate-400">Completed</p>
+          <p id="completedCount" class="mt-2 text-3xl font-semibold text-emerald-400">0</p>
+        </div>
+      </section>
+
+      <section class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead class="bg-slate-800/80 text-left text-slate-300">
+              <tr>
+                <th class="px-5 py-3 font-medium">Video Title</th>
+                <th class="px-5 py-3 font-medium">Status</th>
+                <th class="px-5 py-3 font-medium">Created Date</th>
+              </tr>
+            </thead>
+            <tbody id="jobsTable" class="divide-y divide-slate-800"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const jobsTable = document.getElementById("jobsTable");
+      const pendingCount = document.getElementById("pendingCount");
+      const renderingCount = document.getElementById("renderingCount");
+      const completedCount = document.getElementById("completedCount");
+      const syncButton = document.getElementById("syncButton");
+      const syncSpinner = document.getElementById("syncSpinner");
+      const channelIdInput = document.getElementById("channelId");
+
+      function statusBadge(status) {
+        const normalized = (status || "").toLowerCase();
+        if (normalized === "pending") return "bg-sky-500/20 text-sky-300 border border-sky-400/30";
+        if (normalized === "rendering") return "bg-amber-500/20 text-amber-300 border border-amber-400/30";
+        if (normalized === "scheduled" || normalized === "published") return "bg-emerald-500/20 text-emerald-300 border border-emerald-400/30";
+        return "bg-slate-500/20 text-slate-300 border border-slate-400/30";
+      }
+
+      function renderJobs(jobs) {
+        const pending = jobs.filter((job) => job.status === "pending").length;
+        const rendering = jobs.filter((job) => job.status === "rendering").length;
+        const completed = jobs.filter((job) => ["scheduled", "published"].includes(job.status)).length;
+
+        pendingCount.textContent = pending;
+        renderingCount.textContent = rendering;
+        completedCount.textContent = completed;
+
+        jobsTable.innerHTML = jobs
+          .map((job) => {
+            const title = job.title && job.title.trim().length > 0 ? job.title : "Untitled Clip";
+            const createdAt = new Date(job.created_at).toLocaleString();
+            return `
+              <tr class="hover:bg-slate-800/50 transition">
+                <td class="px-5 py-3">
+                  <a href="${job.source_url}" target="_blank" class="font-medium text-slate-100 hover:text-indigo-300">${title}</a>
+                  <div class="mt-0.5 text-xs text-slate-500">${job.channel_name}</div>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${statusBadge(job.status)}">${job.status}</span>
+                </td>
+                <td class="px-5 py-3 text-slate-300">${createdAt}</td>
+              </tr>
+            `;
+          })
+          .join("");
+      }
+
+      async function refreshJobs() {
+        const response = await fetch("/api/jobs");
+        const payload = await response.json();
+        renderJobs(payload.jobs || []);
+      }
+
+      syncButton.addEventListener("click", async () => {
+        const channelId = channelIdInput.value.trim();
+        if (!channelId) return;
+
+        syncButton.disabled = true;
+        syncSpinner.classList.remove("hidden");
+
+        try {
+          await fetch("/api/jobs/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ channel_id: channelId }),
+          });
+          await refreshJobs();
+        } finally {
+          syncSpinner.classList.add("hidden");
+          syncButton.disabled = false;
+        }
+      });
+
+      refreshJobs();
+      setInterval(refreshJobs, 5000);
+    </script>
+  </body>
+</html>
